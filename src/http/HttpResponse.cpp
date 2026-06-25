@@ -1,4 +1,6 @@
 #include "http/HttpResponse.hpp"
+#include <map>
+#include <sstream>
 
 std::string buildResponse(int statusCode, const std::string& contentType, const std::string& body) {
     static std::map<int, std::string> statusTexts;
