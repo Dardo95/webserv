@@ -16,3 +16,15 @@ const LocationConfig* matchLocation(const ServerConfig& server, const std::strin
     }
     return best;
 }
+
+bool isMethodAllowed(const LocationConfig* location, const std::string& method) {
+    if (location->allowed_methods.empty()) {
+        return method == "GET";
+    }
+    return location->allowed_methods.find(method) != location->allowed_methods.end();
+}
+
+std::string resolvePath(const LocationConfig* location, const std::string& uri) {
+    std::string remainder = uri.substr(location->path.length());
+    return location->root + remainder;
+}
