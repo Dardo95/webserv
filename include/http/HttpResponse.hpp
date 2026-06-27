@@ -3,6 +3,6 @@
 
 #include "webserv.hpp"
 
-std::string buildResponse(int statusCode, const std::string& contentType, const std::string& body);
+std::string buildResponse(int statusCode, const std::string& contentType, const std::string& body, const std::string& extraHeader = "");
 
 #endif

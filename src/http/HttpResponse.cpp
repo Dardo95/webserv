@@ -2,11 +2,13 @@
 #include <map>
 #include <sstream>
 
-std::string buildResponse(int statusCode, const std::string& contentType, const std::string& body) {
+std::string buildResponse(int statusCode, const std::string& contentType, const std::string& body, const std::string& extraHeader) {
     static std::map<int, std::string> statusTexts;
     if (statusTexts.empty()) {
         statusTexts[200] = "OK";
         statusTexts[201] = "Created";
+        statusTexts[301] = "Moved Permanently";
+        statusTexts[302] = "Found";
         statusTexts[404] = "Not Found";
         statusTexts[403] = "Forbidden";
         statusTexts[405] = "Method Not Allowed";
@@ -31,6 +33,7 @@ std::string buildResponse(int statusCode, const std::string& contentType, const 
     response += "HTTP/1.1 " + codeStr + " " + statusText + "\r\n";
     response += "Content-Type: " + contentType + "\r\n";
     response += "Content-Length: " + lengthStr + "\r\n";
+    response += extraHeader;
     response += "\r\n";
     response += body;
 
