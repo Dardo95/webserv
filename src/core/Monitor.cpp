@@ -85,16 +85,32 @@ void Monitor::handleClientRead(int client_fd) {
         
         if (!server) {
             _responses[client_fd] = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
-        } else {
-            _responses[client_fd] = Method::processRequest(request, server);
+            struct epoll_event ev;
+            std::memset(&ev, 0, sizeof(ev));
+            ev.events = EPOLLOUT;
+            ev.data.fd = client_fd;
+            epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, client_fd, &ev);
+            return;
         }
-
-        struct epoll_event ev;
-        std::memset(&ev, 0, sizeof(ev));
-        ev.events = EPOLLOUT;
-        ev.data.fd = client_fd;
-        epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, client_fd, &ev);
-
+        std::string result_str = Method::processRequest(request, server);
+        if (result_str.find("CGI_TRIGGERED:") == 0) {
+            int pipe_fd = std::atoi(result_str.substr(14).c_str());
+            _pipe_to_client[pipe_fd] = client_fd;
+            struct epoll_event ev;
+            std::memset(&ev, 0, sizeof(ev));
+            ev.events = EPOLLIN;
+            ev.data.fd = pipe_fd;
+            epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, pipe_fd, &ev);
+            return;
+        } else {
+            _responses[client_fd] = result_str;
+            
+            struct epoll_event ev;
+            std::memset(&ev, 0, sizeof(ev));
+            ev.events = EPOLLOUT;
+            ev.data.fd = client_fd;
+            epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, client_fd, &ev);
+        }
     } else if (result == PARSE_ERROR) {
         _responses[client_fd] = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n";
         struct epoll_event ev;
@@ -149,6 +165,28 @@ void Monitor::runServer() {
             }
             if (is_listener) 
                 handleNewConnection(current_fd);
+            else if (_pipe_to_client.find(current_fd) != _pipe_to_client.end()) {
+                int client_fd = _pipe_to_client[current_fd];
+                char cgi_buffer[4096];
+                std::memset(cgi_buffer, 0, sizeof(cgi_buffer));
+                int bytes_read = read(current_fd, cgi_buffer, sizeof(cgi_buffer) - 1);
+
+                if (bytes_read > 0){
+                    std::stringstream ss;
+                    ss << "HTTP/1.1 200 OK\r\n" << cgi_buffer;
+                    _responses[client_fd] = ss.str();
+                } else {
+                    _response[client_fd] = "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+                }
+                epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, current_fd, NULL);
+                close(current_fd);
+                _pipe_to_client.erase(current_fd);
+                struct epoll_event ev;
+                std::memset(&ev, 0, sizeof(ev));
+                ev.events = EPOLLOUT;
+                ev.data.fd = client_fd;
+                epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, client_fd, &ev);
+            }
             else if (event_list[i].events & EPOLLIN) 
                 handleClientRead(current_fd);
             else if (event_list[i].events & EPOLLOUT) 

@@ -13,6 +13,8 @@
 #include <map>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <sys/stat.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <sstream>
 #include <cstring>
@@ -41,11 +43,13 @@
 // Http: Clases para el manejo de las peticiones HTTP y su parseo
 #include "http/HttpRequest.hpp"
 #include "http/HttpRequestParser.hpp"
+#include "http/HttpResponse.hpp"
 #include "router/Router.hpp"
 
 // Core: Clases usadas para la configuracion e inicializacion del servidor
-#include "core/socket.hpp"
+#include "core/Socket.hpp"
 #include "core/Monitor.hpp"
 #include "core/Methods.hpp"
+#include "core/HandlerCGI.hpp"
 
 #endif

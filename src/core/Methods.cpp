@@ -1,9 +1,4 @@
 #include "webserv.hpp"
-#include "http/HttpResponse.hpp"
-#include <sys/stat.h>
-#include <dirent.h>
-#include <fcntl.h>
-#include <unistd.h>
 
 static std::string readFile(const std::string& path) {
     int fd = open(path.c_str(), O_RDONLY);
@@ -88,11 +83,28 @@ std::string Method::processRequest(HttpRequest& request, const ServerConfig* ser
     }
     std::string real_path = resolvePath(location, request.uri);
     std::cout << "🎯 [Method] Ruta física resuelta: " << real_path << std::endl;
+    size_t  dot_pos = real_path.find_last_of('.');
+    if (dot_pos != std::string::npos) {
+        std::string extension = real_path.substr(dot_pos);
+        if (extension == ".py" || extension == ".php" || extension == ".sh") {
+            try {
+                HandlerCGI cgi(real_path, extension);
+                int pipe_fd = cgi.execute(request);
+                std::stringstream ss;
+                ss << "CGI_TRIGGERED:" << pipe_fd;
+                return ss.str();
+            } catch (const std::exception& e) {
+                std::cerr << "❌ Error ejecutando CGI: " << e.what() << std::endl;
+                std::string body = getErrorBody(500, server, "<html><body><h1>500 Internal Server Error (CGI)</h1></body></html>");
+                return buildResponse(500, "text/html", body);
+            }
+        }
+    }
     if (request.method == "GET") {
         return handleGET(location, real_path, server);
     } 
     else if (request.method == "POST") {
-        return handlePOST(real_path, request, server);
+        return handlePOST(real_path, request, server, location);
     } 
     else if (request.method == "DELETE") {
         return handleDELETE(real_path, server);
@@ -145,21 +157,43 @@ std::string Method::handleGET(const LocationConfig* location, const std::string&
     return buildResponse(200, contentType, content);
 }
 
-std::string Method::handlePOST(const std::string& real_path, const HttpRequest& request, const ServerConfig* server) {
-    size_t max_body_size = server->client_max_body_size ? server->client_max_body_size : 5242880; // 5MB default
-    
+std::string Method::handlePOST(const std::string& real_path, const HttpRequest& request, const ServerConfig* server, const LocationConfig* location) {
+    size_t max_body_size = (location && location->client_max_body_size > 0) 
+                        ? location->client_max_body_size
+                        : (server->client_max_body_size ? server->client_max_body_size : 5242880);
     if (request.body.length() > max_body_size) {
-        std::cerr << "❌ POST: Body excede client_max_body_size" << std::endl;
+        std::cerr << "❌ POST: Body excede el limite permitido." << std::endl;
         return "HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
     }
-    std::ofstream outfile(real_path.c_str(), std::ios::binary);
+    if (!location || !location->upload_enabled) {
+        std::cerr << "❌ POST: Upload deshabilitado para esta location" << std::endl;
+        return "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n";
+    }
+    std::string final_path = real_path;
+    std::string upload_dir = location->upload_store;
+
+    if (!upload_dir.empty()) {
+        if (upload_dir[upload_dir.length() - 1] != '/') {
+            upload_dir += '/';
+        }
+        size_t last_slash = request.uri.find_last_not_of('/');
+        std::string filename = (last_slash != std::string::npos) ? request.uri.substr(last_slash + 1) : "uploaded_file";
+        final_path = upload_dir + filename;
+        if (mkdir(upload_dir.c_str(), 0775) < 0) {
+            if (errno != EEXIST) {
+                std::cerr << "❌ POST: No se pudo crear el directorio upload_store: " << strerror(errno) << std::endl;
+                return "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
+            }
+        }
+    }
+    std::ofstream outfile(final_path.c_str(), std::ios::binary);
     if (!outfile.is_open()) {
-        std::cerr << "❌ POST: No se pudo crear el archivo en " << real_path << std::endl;
+        std::cerr << "❌ POST: No se pudo crear el archivo final en " << final_path << std::endl;
         return "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n";
     }
     outfile.write(request.body.c_str(), request.body.length());
     outfile.close();
-    std::cout << "💾 POST: Archivo creado con éxito" << std::endl;
+    std::cout << "💾 POST: Archivo creado con éxito en zona segura: " << final_path << std::endl;
     return "HTTP/1.1 201 Created\r\nContent-Length: 14\r\n\r\nArchivo Creado";
 }
 

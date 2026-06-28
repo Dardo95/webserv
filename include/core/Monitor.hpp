@@ -10,6 +10,7 @@ class Monitor
         std::vector<ListeningSocket>    _listeners;
         std::map<int, HttpRequest>      _requests;
         std::map<int, std::string>      _responses;
+        std::map<int, int>              _pipe_to_client;
 
         const ServerConfig* findServerConfig(int client_fd);
     public:
