@@ -120,14 +120,23 @@ std::string Method::processRequest(HttpRequest& request, const ServerConfig* ser
         std::string body = getErrorBody(404, server, "<html><body><h1>404 Not Found</h1></body></html>");
         return buildResponse(404, "text/html", body);
     }
-    if (request.uri == "/login" && request.method == "POST") {
-        return handleLogin(request, server);
+    if (request.uri == "/login") {
+        if (request.method == "POST") {
+            return handleLogin(request, server);
+        } else {
+            std::string content = readFile(location->root + "/login.html");
+            if (content.empty()) {
+                std::string body = getErrorBody(404, server, "<html><body><h1>404 Not Found</h1></body></html>");
+                return buildResponse(404, "text/html", body);
+            }
+            return buildResponse(200, "text/html", content);
+        }
     }
     if (location->redirect_code != 0) {
         std::cout << "↪️ Redirect " << location->redirect_code << " -> " << location->redirect_target << std::endl;
         return buildResponse(location->redirect_code, "text/html", "", "Location: " + location->redirect_target + "\r\n");
     }
-    if (location->requires_auth) {
+    if (location->requires_auth && request.uri != "/login") {
         std::string sessionId = getCookieValue(request, "session_id");
         if (sessionId.empty() || sessions.find(sessionId) == sessions.end()) {
             return buildResponse(302, "text/html", "", "Location: /login\r\n");
