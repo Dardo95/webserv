@@ -10,7 +10,7 @@
 // =============================================================
 //  ConfigTypes.hpp
 //  Estructuras de datos que produce el parser de configuración.
-//  Todo el resto del servidor (event loop, request handler, CGI...)
+//  Todo el resto del servidor (event loop, request handler, CGI...git)
 //  consulta estas estructuras en modo solo-lectura.
 // =============================================================
 
